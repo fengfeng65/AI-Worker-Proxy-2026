@@ -1,6 +1,9 @@
 import { RouteConfig, ProviderConfig, Env, OpenAIChatRequest, ProviderResponse } from './types';
 import { TokenManager } from './token-manager';
 import { ProxyError } from './utils/error-handler';
+import { discoverModels } from './model-discovery';
+
+const AUTO_ROUTE = '__auto__';
 
 export class Router {
   private routes: RouteConfig;
@@ -10,16 +13,30 @@ export class Router {
   }
 
   /**
-   * Get list of available models
+   * Get all statically configured routes plus models discovered from auto providers.
    */
-  getAvailableModels(): Array<{
+  async getAvailableModels(): Promise<Array<{
     id: string;
     object: string;
     owned_by: string;
     permission: string[];
-  }> {
-    const models = Object.keys(this.routes);
-    return models.map((model) => ({
+  }>> {
+    const modelNames = new Set(
+      Object.keys(this.routes).filter((name) => name !== AUTO_ROUTE)
+    );
+
+    const autoProviders = this.routes[AUTO_ROUTE] || [];
+    const discovered = await Promise.all(
+      autoProviders.map((config) => discoverModels(config, this.env))
+    );
+
+    for (const models of discovered) {
+      for (const model of models) {
+        modelNames.add(model);
+      }
+    }
+
+    return [...modelNames].map((model) => ({
       id: model,
       object: 'model',
       owned_by: 'ai-worker-proxy',
@@ -28,16 +45,23 @@ export class Router {
   }
 
   /**
-   * Get provider configurations for a given model name
+   * Get provider configurations for a given model name.
    */
-  getProvidersForModel(model: string): ProviderConfig[] {
-    // Check exact match first
+  async getProvidersForModel(model: string): Promise<ProviderConfig[]> {
     if (this.routes[model]) {
       return this.routes[model];
     }
 
-    // Default fallback - use first available route or throw error
-    const defaultRoute = Object.values(this.routes)[0];
+    const autoProviders = this.routes[AUTO_ROUTE] || [];
+    for (const config of autoProviders) {
+      const models = await discoverModels(config, this.env);
+      if (models.includes(model)) {
+        return [{ ...config, model, autoDiscover: undefined }];
+      }
+    }
+
+    // Preserve the original fallback behavior for unknown model names.
+    const defaultRoute = Object.entries(this.routes).find(([name]) => name !== AUTO_ROUTE)?.[1];
     if (defaultRoute) {
       console.log(`[Router] No configuration found for model "${model}", using default route`);
       return defaultRoute;
@@ -46,29 +70,22 @@ export class Router {
     throw new ProxyError(`No providers configured for model: ${model}`, 404);
   }
 
-  /**
-   * Execute request with provider fallback
-   * Will try providers in order until one succeeds
-   */
   async executeWithFallback(request: OpenAIChatRequest): Promise<ProviderResponse> {
     const model = request.model;
     if (!model) {
       throw new ProxyError('Model name is required', 400);
     }
 
-    const providers = this.getProvidersForModel(model);
-
+    const providers = await this.getProvidersForModel(model);
     console.log(`[Router] Model "${model}" has ${providers.length} provider(s) configured`);
 
     let lastError: any = null;
 
-    // Try each provider in order
     for (let i = 0; i < providers.length; i++) {
       const config = providers[i];
       console.log(
         `[Router] Trying provider ${i + 1}/${providers.length}: ${config.provider}/${config.model}`
       );
-
       try {
         const manager = new TokenManager(config, this.env);
         const response = await manager.executeWithRotation(request);
@@ -77,7 +94,6 @@ export class Router {
           console.log(`[Router] Success with provider: ${config.provider}/${config.model}`);
           return response;
         }
-
         lastError = response.error;
         console.log(
           `[Router] Provider ${config.provider}/${config.model} failed: ${response.error}`
@@ -88,7 +104,6 @@ export class Router {
       }
     }
 
-    // All providers failed
     return {
       success: false,
       error: `All providers failed. Last error: ${lastError?.message || lastError || 'Unknown error'}`,
@@ -102,7 +117,6 @@ export class Router {
       if (!configStr) {
         throw new Error('ROUTES_CONFIG not found in environment');
       }
-
       const config = JSON.parse(configStr);
       console.log('[Router] Loaded routes:', Object.keys(config));
       return config;
