@@ -72,7 +72,7 @@ export interface OpenAIStreamChunk {
 // Provider configuration
 export interface ProviderConfig {
   provider: 'anthropic' | 'google' | 'openai' | 'openai-compatible' | 'cloudflare-ai';
-  model?: string;
+  model: string;
   apiKeys: string[]; // Array of env var names
   baseUrl?: string; // For openai-compatible providers
   autoDiscover?: boolean; // Discover models from GET <baseUrl>/models
