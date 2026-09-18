@@ -8,19 +8,19 @@ import { ProviderConfig, Env } from '../types';
 export function createProvider(config: ProviderConfig, env: Env): AIProvider {
   switch (config.provider) {
     case 'anthropic':
-      return new AnthropicProvider(config.model);
+      return new AnthropicProvider(config.model || '');
 
     case 'google':
-      return new GoogleProvider(config.model);
+      return new GoogleProvider(config.model || '');
 
     case 'openai':
-      return new OpenAIProvider(config.model);
+      return new OpenAIProvider(config.model || '');
 
     case 'openai-compatible':
       if (!config.baseUrl) {
         throw new Error('baseUrl is required for openai-compatible provider');
       }
-      return new OpenAIProvider(config.model, config.baseUrl);
+      return new OpenAIProvider(config.model || '', config.baseUrl);
 
     case 'cloudflare-ai':
       if (!env.AI) {
@@ -28,7 +28,7 @@ export function createProvider(config: ProviderConfig, env: Env): AIProvider {
           'Cloudflare AI binding not found. Make sure AI binding is configured in wrangler.toml'
         );
       }
-      return new CloudflareAIProvider(config.model, env.AI);
+      return new CloudflareAIProvider(config.model || '', env.AI);
 
     default:
       throw new Error(`Unknown provider: ${config.provider}`);
