@@ -27,7 +27,7 @@ function cacheKey(config: ProviderConfig): string {
 }
 
 export async function discoverModels(config: ProviderConfig, env: Env): Promise<string[]> {
-  if (config.provider !== 'openai-compatible' || !config.baseUrl || !config.autoDiscover) {
+  if (config.provider !== 'openai-compatible' || !config.baseUrl) {
     return [];
   }
 
