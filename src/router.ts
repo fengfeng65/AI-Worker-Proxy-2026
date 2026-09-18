@@ -12,9 +12,6 @@ export class Router {
     this.routes = this.parseRoutesConfig();
   }
 
-  /**
-   * Get all statically configured routes plus models discovered from auto providers.
-   */
   async getAvailableModels(): Promise<Array<{
     id: string;
     object: string;
@@ -51,19 +48,18 @@ export class Router {
       .flatMap(([, configs]) =>
         configs.filter((config) => config.provider === 'openai-compatible')
       );
+
     const seen = new Set<string>();
     return [...explicit, ...implicit].filter((config) => {
-  }
       const key = JSON.stringify([config.provider, config.baseUrl, config.apiKeys]);
-      if (seen.has(key)) return false;
+      if (seen.has(key)) {
+        return false;
+      }
       seen.add(key);
       return true;
     });
   }
 
-  /**
-   * Get provider configurations for a given model name.
-   */
   async getProvidersForModel(model: string): Promise<ProviderConfig[]> {
     if (this.routes[model]) {
       return this.routes[model];
@@ -73,11 +69,12 @@ export class Router {
     for (const config of autoProviders) {
       const models = await discoverModels(config, this.env);
       if (models.includes(model)) {
-        return [{ ...config, model, autoDiscover: undefined }];
+        return [{ ...config, model }];
       }
     }
 
-    throw new ProxyError(`No providers configured for model: ${model}`, 404);
+    throw new ProxyError('No providers configured for model: ' + model, 404);
+  }
 
   async executeWithFallback(request: OpenAIChatRequest): Promise<ProviderResponse> {
     const model = request.model;
@@ -86,36 +83,57 @@ export class Router {
     }
 
     const providers = await this.getProvidersForModel(model);
-    console.log(`[Router] Model "${model}" has ${providers.length} provider(s) configured`);
+    console.log('[Router] Model "' + model + '" has ' + providers.length + ' provider(s) configured');
 
     let lastError: any = null;
 
     for (let i = 0; i < providers.length; i++) {
       const config = providers[i];
       console.log(
-        `[Router] Trying provider ${i + 1}/${providers.length}: ${config.provider}/${config.model}`
+        '[Router] Trying provider ' +
+          (i + 1) +
+          '/' +
+          providers.length +
+          ': ' +
+          config.provider +
+          '/' +
+          config.model
       );
+
       try {
         const manager = new TokenManager(config, this.env);
         const response = await manager.executeWithRotation(request);
 
         if (response.success) {
-          console.log(`[Router] Success with provider: ${config.provider}/${config.model}`);
+          console.log('[Router] Success with provider: ' + config.provider + '/' + config.model);
           return response;
         }
+
         lastError = response.error;
         console.log(
-          `[Router] Provider ${config.provider}/${config.model} failed: ${response.error}`
+          '[Router] Provider ' +
+            config.provider +
+            '/' +
+            config.model +
+            ' failed: ' +
+            response.error
         );
       } catch (error) {
         lastError = error;
-        console.error(`[Router] Provider ${config.provider}/${config.model} exception:`, error);
+        console.error(
+          '[Router] Provider ' +
+            config.provider +
+            '/' +
+            config.model +
+            ' exception:',
+          error
+        );
       }
     }
 
     return {
       success: false,
-      error: `All providers failed. Last error: ${lastError?.message || lastError || 'Unknown error'}`,
+      error: 'All providers failed. Last error: ' + (lastError?.message || lastError || 'Unknown error'),
       statusCode: 500,
     };
   }
@@ -126,6 +144,7 @@ export class Router {
       if (!configStr) {
         throw new Error('ROUTES_CONFIG not found in environment');
       }
+
       const config = JSON.parse(configStr);
       console.log('[Router] Loaded routes:', Object.keys(config));
       return config;
