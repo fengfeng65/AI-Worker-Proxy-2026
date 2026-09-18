@@ -75,7 +75,6 @@ export interface ProviderConfig {
   model: string;
   apiKeys: string[]; // Array of env var names
   baseUrl?: string; // For openai-compatible providers
-  autoDiscover?: boolean; // Discover models from GET <baseUrl>/models
 }
 
 export interface RouteConfig {
