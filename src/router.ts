@@ -25,7 +25,7 @@ export class Router {
       Object.keys(this.routes).filter((name) => name !== AUTO_ROUTE)
     );
 
-    const autoProviders = this.routes[AUTO_ROUTE] || [];
+    const autoProviders = this.getAutoProviders();
     const discovered = await Promise.all(
       autoProviders.map((config) => discoverModels(config, this.env))
     );
@@ -44,6 +44,22 @@ export class Router {
     }));
   }
 
+  private getAutoProviders(): ProviderConfig[] {
+    const explicit = this.routes[AUTO_ROUTE] || [];
+    const implicit = Object.entries(this.routes)
+      .filter(([name]) => name !== AUTO_ROUTE)
+      .flatMap(([, configs]) =>
+        configs.filter((config) => config.provider === 'openai-compatible')
+      );
+    const seen = new Set<string>();
+    return [...explicit, ...implicit].filter((config) => {
+      const key = JSON.stringify([config.provider, config.baseUrl, config.apiKeys]);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
   /**
    * Get provider configurations for a given model name.
    */
@@ -52,7 +68,7 @@ export class Router {
       return this.routes[model];
     }
 
-    const autoProviders = this.routes[AUTO_ROUTE] || [];
+    const autoProviders = this.getAutoProviders();
     for (const config of autoProviders) {
       const models = await discoverModels(config, this.env);
       if (models.includes(model)) {
@@ -60,15 +76,7 @@ export class Router {
       }
     }
 
-    // Preserve the original fallback behavior for unknown model names.
-    const defaultRoute = Object.entries(this.routes).find(([name]) => name !== AUTO_ROUTE)?.[1];
-    if (defaultRoute) {
-      console.log(`[Router] No configuration found for model "${model}", using default route`);
-      return defaultRoute;
-    }
-
-    throw new ProxyError(`No providers configured for model: ${model}`, 404);
-  }
+    throw new ProxyError(`No providers configured for model: \${model}`, 404);
 
   async executeWithFallback(request: OpenAIChatRequest): Promise<ProviderResponse> {
     const model = request.model;
