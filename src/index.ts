@@ -40,7 +40,7 @@ export default {
       // Models list endpoint
       if ((path === '/models' || path === '/v1/models') && request.method === 'GET') {
         const router = new Router(env);
-        const models = await router.getAvailableModels();
+        const models = router.getAvailableModels();
 
         return new Response(
           JSON.stringify({
