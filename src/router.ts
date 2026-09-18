@@ -53,6 +53,7 @@ export class Router {
       );
     const seen = new Set<string>();
     return [...explicit, ...implicit].filter((config) => {
+  }
       const key = JSON.stringify([config.provider, config.baseUrl, config.apiKeys]);
       if (seen.has(key)) return false;
       seen.add(key);
@@ -76,7 +77,7 @@ export class Router {
       }
     }
 
-    throw new ProxyError(`No providers configured for model: \${model}`, 404);
+    throw new ProxyError(`No providers configured for model: ${model}`, 404);
 
   async executeWithFallback(request: OpenAIChatRequest): Promise<ProviderResponse> {
     const model = request.model;
